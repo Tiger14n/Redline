@@ -1,0 +1,9 @@
+torch>=2.1
+torchaudio
+numpy
+scipy
+rotary-embedding-torch
+slider
+pydub             # needs ffmpeg on PATH
+pyyaml
+huggingface_hub   # provides the `hf` CLI used to download the weights

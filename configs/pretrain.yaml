@@ -1,0 +1,34 @@
+# Stage 1 — base pretrain (the "genre_balanced" recipe): trains the full model from
+# scratch on a genre-balanced .osz corpus with dense-map oversampling.
+root: data/osz                           # your corpus of .osz archives
+val_root: data/osz                           # your corpus of .osz archives2     # held-out corpus (song-deduped automatically)
+val_sets: 400
+
+genre_balanced: true
+genre_json: datasets/osu_genre_ranked.json
+genre_alpha: 0.5
+hard_oversample: 3                       # oversample multi-redline sets
+hard_min_redlines: 4
+
+speed_aug: true
+speed_factors: [0.7, 0.8, 0.9, 1.1, 1.2, 1.4]
+speed_aug_prob: 0.3
+degrade_aug: true
+degrade_prob: 0.5
+
+w_sub: 2.0                               # subdivision suppression
+
+optimizer: muon
+muon_lr: 8.0e-3
+adamw_lr: 1.5e-3
+warmup: 1000
+steps: 40000
+batch: 12
+accum: 6
+crops: 6
+workers: 12
+
+ckpt: checkpoints/pretrain
+eval_interval: 500
+log_interval: 10
+snapshot_every: 2000

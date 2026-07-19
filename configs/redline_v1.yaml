@@ -1,0 +1,41 @@
+# Stage 3 — notation head (redline-v1): warm-start from stage 2 and add the red head,
+# supervised on ALL ground-truth redlines (incl. the convention re-anchors the change
+# head deliberately excludes). This is the released model.
+root: data/osz                           # your corpus of .osz archives
+val_root: data/osz                           # your corpus of .osz archives2
+val_sets: 400
+
+genre_balanced: true
+genre_json: datasets/osu_genre_ranked.json
+genre_alpha: 0.5
+hard_oversample: 3
+hard_min_redlines: 4
+hard_oversample2: 6
+hard_min_redlines2: 16
+
+speed_aug: true
+speed_factors: [0.7, 0.8, 0.9, 1.1, 1.2, 1.4]
+speed_aug_prob: 0.3
+degrade_aug: true
+degrade_prob: 0.5
+
+red_head: true                           # the notation head
+w_red: 1.0
+pos_weight_red: 15.0
+w_sub: 2.0
+
+optimizer: muon
+muon_lr: 2.0e-3
+adamw_lr: 4.0e-4
+warmup: 300
+steps: 8000
+batch: 12
+accum: 6
+crops: 6
+workers: 12
+
+init: checkpoints/ft_dense/last.pt       # warm start
+ckpt: checkpoints/redline_v1
+eval_interval: 500
+log_interval: 10
+snapshot_every: 1000

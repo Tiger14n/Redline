@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+models/
+out/
+wandb/
+gui/frontend/public/audio/
+*.log
+checkpoints/
+gui/models.local.json
+redline/dense_songs.json
+redline/cohorts/
+redline/retime_osz.py
