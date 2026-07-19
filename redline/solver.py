@@ -398,8 +398,6 @@ class TimingSolver:
                  live_reanchor=True, live_gate_resid=6.0, live_gate_frac=0.25,
                  live_snap=8.0, live_jit=3.0, anchor_music=True,
                  red_place=True, red_th=0.5, red_min_gap_beats=0.0, const_cover=0.85,
-                 const_collapse=True, const_collapse_cover=0.90, anchor_downbeat=True,
-                 const_collapse_ppm=6.0, const_collapse_resid=3.0,
                  red_live_ppm=6.0):
         self.unified_solver = UnifiedRedlineSolverRobust(max_error_ms=max_error_ms)
         self.lam_switch = lam_switch
@@ -449,11 +447,6 @@ class TimingSolver:
         self.red_place = red_place              # notation-head placement (needs a --red_head model; inert otherwise)
         self.red_th = red_th                    # red-curve peak threshold
         self.const_cover = const_cover          # single-line decoded-beat coverage above which the map is constant-like (suppress dense overlays)
-        self.const_collapse = const_collapse    # collapse tracking re-anchors to ONE redline when a refitted global grid covers the song
-        self.const_collapse_cover = const_collapse_cover   # coverage bar for that collapse (0.90: above the drift regime, tuned on the bench dev half)
-        self.anchor_downbeat = anchor_downbeat  # write the first redline on the model's measure start (whole-beat shift; grid unchanged)
-        self.const_collapse_ppm = const_collapse_ppm       # notation-head peaks/min above which a map is convention-timed -> never collapse
-        self.const_collapse_resid = const_collapse_resid   # also collapse when the global grid's MEDIAN residual is <= this (0 = off); robust where coverage isn't
         self.red_live_ppm = red_live_ppm        # notation-head peaks/min above which the song counts as convention-timed (live)
         self.red_min_gap_beats = red_min_gap_beats  # min beats between NOTATION-ONLY (grid-exact) placements.
                                                 # default 0 (off): mapper same-BPM re-anchors are often
@@ -1242,113 +1235,7 @@ class TimingSolver:
         if self.use_meter2 and not is_rubato:
             out = self._progressive_meter_parser(out, ad, FRAME_MS)
 
-        # --- 11. NOTATION PARSIMONY (collapse) ---
-        # const_like (step 7) stops the dense overlays from being ADDED, but the segmentation
-        # that ran before it already emitted its tracking re-anchors, so a song a human wrote
-        # with one redline still ships with many. If one refitted grid explains const_collapse
-        # _cover of the decoded beats, notate it the way the mapper did: a single line.
-        # Measured on the 366-map genre bench (held-out half): P +8.3, F1 +3.1, p10 +0.6,
-        # and the drift tail (>=11 GT redlines) is untouched because it never passes the gate.
-        collapsed = False
-        # The notation head is the model's own verdict on whether a mapper wrote redlines
-        # here for CONVENTION (section re-anchors) rather than tempo change. A song whose
-        # beats fit one grid can still be a many-redline map for that reason, so a quiet
-        # red head is required before collapsing.
-        quiet_head = red_ppm is None or red_ppm < self.const_collapse_ppm
-        if self.const_collapse and not is_rubato and quiet_head \
-                and len(out) > 0 and len(bt_list) >= 8:
-            out, collapsed = self._const_collapse(out, bt_list)
-
-        # --- 12. DOWNBEAT ANCHOR (collapsed output only) ---
-        # Only meaningful when the collapse just made ONE line carry the whole song: that
-        # line's beat choice IS the notation, and mappers write it on a downbeat. On output
-        # that kept its tracking redlines, moving the first one is measurably harmful
-        # (cohort redline-F1 -3.5) -- the solver's own anchors are already where the
-        # segmentation put them, so leave them alone.
-        if self.anchor_downbeat and collapsed and len(out) > 0 and len(bt_list) >= 8:
-            out = self._anchor_downbeat(out, bt_list, ad)
-
         return (out if not return_beats else (out, bt_list))
-
-    def _global_grid_fit(self, bt_list, mpb0):
-        """One (offset, mpb) grid refitted over ALL decoded beats, outlier-trimmed IRLS.
-        Returns (offset, mpb, coverage) where coverage = fraction of beats within 10 ms."""
-        b = np.asarray(bt_list, float)
-        if len(b) < 8 or not (mpb0 > 1):
-            return None
-        mpb, off = float(mpb0), float(b[0])
-        for _ in range(12):
-            k = np.round((b - off) / mpb)
-            r = b - (off + k * mpb)
-            s = max(float(np.median(np.abs(r))) * 3.0, 8.0)
-            w = np.abs(r) <= s
-            if int(w.sum()) < 8:
-                break
-            A = np.vstack([np.ones(int(w.sum())), k[w]]).T
-            sol, *_ = np.linalg.lstsq(A, b[w], rcond=None)
-            off, mpb = float(sol[0]), float(sol[1])
-            if not (mpb > 1):
-                return None
-        k = np.round((b - off) / mpb)
-        res = np.abs(b - (off + k * mpb))
-        return off, mpb, float((res < 10.0).mean()), float(np.median(res))
-
-    def _const_collapse(self, out, bt_list):
-        """Replace tracking re-anchors with the single line a mapper would write, when one
-        refitted grid covers the song. Deliberately gated well above the drift regime: a
-        song whose beats genuinely wander never reaches the coverage bar, so live/rubato
-        maps keep their per-barline notation."""
-        R = sorted(out, key=lambda x: x[0])
-        f = self._global_grid_fit(bt_list, R[0][1])
-        if f is None:
-            return out, False
-        # Coverage counts beats inside 10 ms, so a handful of mis-decoded beats can veto a
-        # song whose tempo is plainly constant. The MEDIAN residual is robust to exactly
-        # that: measured on the bench, constant-GT songs the coverage gate rejected sit at
-        # 3.5 ms median while genuine drift sits at 42.7 ms.
-        fires = f[2] >= self.const_collapse_cover or \
-            (self.const_collapse_resid > 0 and f[3] <= self.const_collapse_resid)
-        if fires:
-            return [(f[0], f[1], int(R[0][2]))], True
-        return out, False
-
-    def _anchor_downbeat(self, out, bt_list, ad):
-        """Write the first redline on the measure start the model hears, not on whichever
-        beat the tracker locked onto first (mapper convention; GT anchors agree).
-
-        The offset only ever moves by a whole number of beats along its own grid, so every
-        grid line stays exactly where it was and beat fidelity is untouched -- what changes
-        is purely which beat carries the redline. Snapping to a raw decoded beat instead
-        would drag the whole grid by that beat's residual, which p10 (a 10 ms threshold)
-        punishes hard."""
-        R = sorted(out, key=lambda x: x[0])
-        b = np.asarray(bt_list, float)
-        off, mpb, meter = R[0]
-        meter = int(meter) if int(meter) >= 2 else 4
-        if not (mpb > 1):
-            return out
-        end = R[1][0] if len(R) > 1 else (float(b[-1]) + mpb if len(b) else off)
-        sel = b[(b >= off - mpb * 0.5) & (b < end)]
-        if len(sel) == 0:
-            return out
-        k = np.round((sel - off) / mpb).astype(int)
-        fr = np.clip(np.round(sel / FRAME_MS).astype(int), 0, len(ad) - 1)
-        act = np.asarray(ad, float)[fr]
-        best, bestv = None, -1.0
-        for p in range(meter):
-            m = (k % meter) == p
-            if not m.any():
-                continue
-            v = float(act[m].mean())
-            if v > bestv:
-                best, bestv = p, v
-        if best is None:
-            return out
-        kc = k[(k % meter) == best]
-        if not len(kc):
-            return out
-        R[0] = (off + int(kc.min()) * mpb, mpb, meter)
-        return sorted(R, key=lambda x: x[0])
 
     def _red_peaks_per_min(self, red):
         """Notation-head peak density (peaks/min at red_th) — the model's own verdict on
