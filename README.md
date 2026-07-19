@@ -1,29 +1,36 @@
 # Redline
 
-Automatic timing for osu!. Give it a song, get back redlines (uninherited timing points
+Automatic timing detection for osu!. Give it a song, get back redlines (uninherited timing points
 with BPM, offset and meter).
 
-**[Try it in your browser →](https://redline-kohl.vercel.app/)** — no install, drop a song
-and check the result by ear.
 
-Built for the songs that are painful to time by hand: live drummers, metal, rubato,
-accelerandos. Constant-BPM songs come out as a single redline. Check the result by ear
-before shipping it.
+This tool was built to make timing accessible for inexperienced people, and save time for experienced ones. 
+I don't claim the results are perfect, so users should check and validate the result by ear.
+
+**[Web app demo →](https://redline-kohl.vercel.app/)** 
+
+<img width="936" height="481" alt="image" src="https://github.com/user-attachments/assets/34373307-9b32-467d-8227-9958c265c969" />
+
 
 Under the hood:
 
-- **redline-v1**, a 45M-parameter frame-level model emitting beat, downbeat, sub-frame
+- **redline-v1**, a 45M-parameter frame-level encoder-only model emitting beat, downbeat, sub-frame
   offset, tempo, change and notation activations at 50 fps. The notation head is trained on
   where mappers actually put redlines, which is not where the audio changes.
 - a deterministic solver turning those curves into redlines: tempo-curve segmentation,
   octave anchoring, fit-gate plus live re-anchoring, notation placement. Same input always
   gives the same output; the solve takes ~0.2 s after the model pass.
+- trained on 20k ranked osu! mapsets.
 
-An editor GUI (waveform with activations painted on, review queue, A/B metronome) will be
-released separately.
 
 ## Quick start
 
+### Online demo
+web app demo: **[https://redline-kohl.vercel.app](https://redline-kohl.vercel.app/)** 
+
+this web app demo will remain online and free as long as i can afford the costs. and the web app codebase will be open sourced by then.
+
+### Local install
 ```bash
 pip install -r requirements.txt              # plus ffmpeg on PATH for mp3 decode
 hf download Tiger14n/redline-v1 redline-v1.pt --local-dir models/   # weights (180 MB)
