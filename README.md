@@ -20,7 +20,6 @@ Under the hood:
 - a deterministic solver turning those curves into redlines: tempo-curve segmentation,
   octave anchoring, fit-gate plus live re-anchoring, notation placement. Same input always
   gives the same output; the solve takes ~0.2 s after the model pass.
-- trained on 20k ranked osu! mapsets.
 
 
 ## Quick start
@@ -146,6 +145,8 @@ python -m redline.train configs/redline_v1.yaml   # + notation head -> released 
 Override any key inline: `--set steps=600 batch=8`. Training reads `.osz` archives directly
 (`root:` in the config). Bring your own corpus; ranked-map audio is not distributable.
 Trained end-to-end on a single RTX 3080 (10 GB).
+
+The model was trained using ~20k ranked osu! mapsets.
 
 ## Repository layout
 
